@@ -119,6 +119,41 @@ test('Login mit Passwort erstellt App-Token, Zugriff über Proxy', async () => {
   assert.equal(att.headers.get('content-type'), 'image/png');
 });
 
+test('Übersicht seitenweise per GraphQL', async () => {
+  const p1 = await req('GET', '/api/overview?link=many&id=3&size=40');
+  assert.equal(p1.status, 200, JSON.stringify(p1.data));
+  assert.equal(p1.data.source, 'graphql');
+  assert.equal(p1.data.tickets.length, 40);
+  assert.equal(p1.data.total, 95);
+  const gql = mock.calls.filter((c) => c.path.startsWith('/graphql')).at(-1);
+  assert.equal(gql.body.variables.overviewId, 'gid://zammad/Overview/3');
+  const p3 = await req('GET', `/api/overview?link=many&id=3&size=40&cursor=${encodeURIComponent(Buffer.from('80').toString('base64'))}`);
+  assert.equal(p3.data.tickets.length, 15);
+  assert.equal(p3.data.cursor, null);
+  assert.equal(p3.data.tickets[0].title, 'Massenticket 81');
+});
+
+test('Suche seitenweise', async () => {
+  const s1 = await req('GET', '/api/search?q=massen');
+  assert.equal(s1.data.tickets.length, 40);
+  assert.equal(s1.data.nextPage, 2);
+  const s3 = await req('GET', '/api/search?q=massen&page=3');
+  assert.equal(s3.data.tickets.length, 15);
+  assert.equal(s3.data.nextPage, null);
+  assert.match(mock.calls.at(-1).path, /page=3&per_page=40/);
+});
+
+test('Übersicht Fallback auf REST, wenn GraphQL fehlt', async () => {
+  mock.state.graphqlDisabled = true;
+  const p1 = await req('GET', '/api/overview?link=many&id=3&size=40');
+  assert.equal(p1.data.source, 'rest');
+  assert.equal(p1.data.tickets.length, 40);
+  assert.equal(p1.data.cursor, '40');
+  const p2 = await req('GET', '/api/overview?link=many&id=3&size=40&cursor=40');
+  assert.equal(p2.data.tickets[0].title, 'Massenticket 41');
+  mock.state.graphqlDisabled = false;
+});
+
 test('Proxy blockiert Token-Verwaltung und unsaubere Pfade', async () => {
   assert.equal((await req('GET', '/api/z/user_access_token')).status, 403);
   // Kodierte Punkte und Sonderzeichen landen nie ungeprüft bei Zammad

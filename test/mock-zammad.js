@@ -24,6 +24,12 @@ export function startMock(port = 0) {
     1002: { id: 1002, ticket_id: 102, sender_id: 2, type_id: 15, from: '+41790000000', internal: false, content_type: 'text/plain', body: 'Hallo, welches Schloss passt?', attachments: [], created_by_id: 20, created_at: new Date(Date.now() - 86400000).toISOString() },
   };
   let nextArt = 2000;
+  const state = { graphqlDisabled: false };
+  const bulk = {};
+  for (let i = 0; i < 95; i++) {
+    const id = 5000 + i;
+    bulk[id] = { id, number: String(3000000 + i), title: `Massenticket ${i + 1}`, state_id: 4, group_id: 3, customer_id: 20, owner_id: 1, updated_at: new Date(Date.now() - i * 3600000).toISOString() };
+  }
   const notifications = [];
   const calls = [];
 
@@ -73,13 +79,44 @@ export function startMock(port = 0) {
       return json(200, {});
     }
     if (p === '/ticket_overviews' && !url.searchParams.get('view')) {
-      return json(200, [{ name: 'Meine Tickets', link: 'my_assigned', prio: 1, count: 1 }, { name: 'Offene Tickets', link: 'all_open', prio: 2, count: 2 }]);
+      return json(200, [{ id: 1, name: 'Meine Tickets', link: 'my_assigned', prio: 1, count: 1 }, { id: 2, name: 'Offene Tickets', link: 'all_open', prio: 2, count: 2 }, { id: 3, name: 'Viele Tickets', link: 'many', prio: 3, count: 95 }]);
     }
     if (p === '/ticket_overviews') {
-      const ids = url.searchParams.get('view') === 'my_assigned' ? [102] : [101, 102];
+      const view = url.searchParams.get('view');
+      if (view === 'many') {
+        const ids = Object.keys(bulk).map(Number);
+        return json(200, { assets: { ...ticketAssets([]), Ticket: bulk }, index: { tickets: ids.map((id) => ({ id })), tickets_count: ids.length } });
+      }
+      const ids = view === 'my_assigned' ? [102] : [101, 102];
       return json(200, { assets: ticketAssets(ids), index: { tickets: ids.map((id) => ({ id })), tickets_count: ids.length } });
     }
-    if (p === '/tickets/search') return json(200, { tickets: [101], tickets_count: 1, assets: ticketAssets([101]) });
+    if (p === '/tickets/search') {
+      const page = Number(url.searchParams.get('page')) || 1;
+      const per = Number(url.searchParams.get('per_page')) || 50;
+      const ids = Object.keys(bulk).map(Number).slice((page - 1) * per, page * per);
+      return json(200, { record_ids: ids, total_count: Object.keys(bulk).length, assets: { ...ticketAssets([]), Ticket: bulk } });
+    }
+    if (url.pathname === '/graphql') {
+      if (state.graphqlDisabled) return json(200, { errors: [{ message: "Field 'ticketsByOverview' doesn't exist" }] });
+      const v = body.variables;
+      const oid = Number(String(v.overviewId).split('/').pop());
+      const all = oid === 3 ? Object.values(bulk) : oid === 1 ? [tickets[102]] : [tickets[101], tickets[102]];
+      const start = v.cursor ? Number(Buffer.from(v.cursor, 'base64').toString()) : 0;
+      const slice = all.slice(start, start + v.pageSize);
+      const end = start + slice.length;
+      return json(200, { data: { ticketsByOverview: {
+        totalCount: all.length,
+        edges: slice.map((t) => ({ node: {
+          internalId: t.id, number: t.number, title: t.title, updatedAt: t.updated_at, escalationAt: null, pendingTime: null,
+          lastContactCustomerAt: null, lastContactAgentAt: null,
+          customer: { fullname: 'Kim Kunde' }, owner: { internalId: t.owner_id, fullname: t.owner_id === 7 ? 'Alex Muster' : '-' },
+          state: { name: states.find((x) => x.id === t.state_id).name }, group: { name: 'Support' },
+        } })),
+        pageInfo: { endCursor: Buffer.from(String(end)).toString('base64'), hasNextPage: end < all.length },
+      } } });
+    }
+    const gm = p.match(/^\/groups\/(\d+)$/);
+    if (gm) return json(200, group);
     const tm = p.match(/^\/tickets\/(\d+)$/);
     if (tm && req.method === 'GET') {
       const t = tickets[tm[1]];
@@ -130,7 +167,7 @@ export function startMock(port = 0) {
 
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => {
     resolve({
-      server, port: server.address().port, TOKEN, tokens, tickets, articles, notifications, calls,
+      server, port: server.address().port, TOKEN, state, tokens, tickets, articles, notifications, calls,
       addNotification(o_id, type = 'update') {
         const id = (notifications.at(-1)?.id || 500) + 1;
         notifications.push({ id, o_id, object: 'Ticket', type, seen: false, created_by_id: 20, created_at: new Date().toISOString() });

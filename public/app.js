@@ -233,16 +233,12 @@ function renderLogin(mode = 'password', error = null) {
 
 // ---------- Ticketliste ----------
 
-function ticketRows(ticketIds, assets) {
-  const T = assets.Ticket || {}, U = assets.User || {}, G = assets.Group || {}, S = assets.TicketState || {};
+// Zeilen aus normalisierten Tickets (vom Server: /api/overview, /api/search)
+function ticketRows(rows) {
   const unreadIds = new Set(state.unread.map((n) => n.o_id));
-  return ticketIds.map((id) => {
-    const t = T[id];
-    if (!t) return '';
-    const st = S[t.state_id]?.name || state.lookups?.states[t.state_id]?.name;
-    const escalated = t.escalation_at && new Date(t.escalation_at) < new Date() && !/closed|merged/.test(st || '');
-    const cust = userName(U[t.customer_id]);
-    const owner = t.owner_id > 1 ? userName(U[t.owner_id]) : '';
+  return rows.map((t) => {
+    const st = t.state || state.lookups?.states[t.state_id]?.name || '';
+    const escalated = t.escalation_at && new Date(t.escalation_at) < new Date() && !/closed|merged/.test(st);
     const when = t.last_contact_customer_at && t.last_contact_customer_at > (t.last_contact_agent_at || '') ? t.last_contact_customer_at : t.updated_at;
     return `
       <li class="trow ${stateClass(st, escalated)} ${unreadIds.has(t.id) ? 'unread' : ''}">
@@ -250,10 +246,56 @@ function ticketRows(ticketIds, assets) {
           <span class="stripe" aria-hidden="true"></span>
           <span class="title">${esc(t.title)}</span>
           <span class="when">${esc(rel(when))}</span>
-          <span class="meta"><span class="nr">#${esc(t.number)}</span> ${esc(cust)}${G[t.group_id] ? ` – ${esc(G[t.group_id].name)}` : ''}${owner ? ` – ${esc(owner)}` : ''}${escalated ? ' – eskaliert' : ` – ${esc(stateLabel(st))}`}</span>
+          <span class="meta"><span class="nr">#${esc(t.number)}</span> ${esc(t.customer)}${t.group ? ` – ${esc(t.group)}` : ''}${t.owner ? ` – ${esc(t.owner)}` : ''}${escalated ? ' – eskaliert' : ` – ${esc(stateLabel(st))}`}</span>
         </a>
       </li>`;
   }).join('');
+}
+
+// Endlos-Liste: lädt die nächste Seite, sobald das Listenende in Sicht kommt
+function pagedList(container, fetchPage, emptyText) {
+  let next = undefined; // undefined = erste Seite, null = fertig
+  let loading = false;
+  let total = 0;
+  let shown = 0;
+  container.innerHTML = '<ul class="tlist"></ul><div class="pager"><div class="loading">Lade Tickets…</div></div>';
+  const ul = container.querySelector('ul');
+  const pager = container.querySelector('.pager');
+  const token = {};
+  container._token = token;
+
+  const load = async () => {
+    if (loading || next === null || container._token !== token) return;
+    loading = true;
+    pager.innerHTML = '<div class="loading">Lade…</div>';
+    try {
+      const r = await fetchPage(next);
+      if (container._token !== token) return;
+      total = r.total ?? total;
+      shown += r.tickets.length;
+      ul.insertAdjacentHTML('beforeend', ticketRows(r.tickets));
+      next = r.next ?? null;
+      if (!shown) pager.innerHTML = `<div class="empty">${esc(emptyText)}</div>`;
+      else if (next === null) pager.innerHTML = total > shown ? `<p class="empty">${shown} von ${total} angezeigt</p>` : '';
+      else pager.innerHTML = `<button class="more" type="button">Weitere laden (${shown} von ${total})</button>`;
+      pager.querySelector('.more')?.addEventListener('click', load);
+    } catch (err) {
+      if (container._token !== token) return;
+      pager.innerHTML = `<div class="error-box">${esc(err.message)}</div><button class="more" type="button">Nochmals versuchen</button>`;
+      pager.querySelector('.more').addEventListener('click', load);
+    } finally {
+      loading = false;
+    }
+  };
+
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      if (container._token !== token || !container.isConnected) { io.disconnect(); return; }
+      if (entries.some((e) => e.isIntersecting)) load();
+    }, { rootMargin: '600px 0px' });
+    io.observe(pager);
+  }
+  load();
 }
 
 async function renderList() {
@@ -284,12 +326,13 @@ async function renderList() {
           ${esc(o.name)}<span class="count">${o.count ?? ''}</span>
         </button>`).join('')}
     </div>
-    <div id="listBody"><div class="loading">Lade Tickets…</div></div>`;
+    <div id="listBody"></div>`;
   main.querySelectorAll('[data-view]').forEach((b) => {
     b.onclick = () => {
       state.currentView = b.dataset.view;
       store('zm.view', state.currentView);
       main.querySelectorAll('[data-view]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      window.scrollTo(0, 0);
       loadOverview();
     };
   });
@@ -297,21 +340,18 @@ async function renderList() {
   loadOverview();
 }
 
-async function loadOverview() {
+function loadOverview() {
   const body = document.getElementById('listBody');
   if (!body) return;
-  const view = state.currentView;
-  try {
-    const r = await z('GET', `ticket_overviews?view=${encodeURIComponent(view)}`);
-    if (view !== state.currentView) return;
-    const ids = (r?.index?.tickets || []).map((t) => t.id);
-    const count = r?.index?.tickets_count ?? ids.length;
-    body.innerHTML = ids.length
-      ? `<ul class="tlist">${ticketRows(ids, r.assets || {})}</ul>${count > ids.length ? `<p class="empty">${ids.length} von ${count} angezeigt. Weitere über die Suche.</p>` : ''}`
-      : '<div class="empty">Keine Tickets in dieser Übersicht.</div>';
-  } catch (err) {
-    body.innerHTML = `<div class="error-box">${esc(err.message)}</div>`;
-  }
+  const ov = state.overviews.find((o) => o.link === state.currentView);
+  if (!ov) return;
+  pagedList(body, async (cursor) => {
+    const qs = new URLSearchParams({ link: ov.link, size: '40' });
+    if (ov.id) qs.set('id', ov.id);
+    if (cursor) qs.set('cursor', cursor);
+    const r = await api('GET', `overview?${qs}`);
+    return { tickets: r.tickets, total: r.total, next: r.cursor };
+  }, 'Keine Tickets in dieser Übersicht.');
 }
 
 // ---------- Suche ----------
@@ -323,21 +363,15 @@ function renderSearch() {
     <form class="searchbar" id="sf"><input type="search" name="q" placeholder="Nummer, Titel, Kunde, Text…" value="${esc(last)}" enterkeyhint="search" autocapitalize="none"></form>
     <div id="results">${last ? '' : '<div class="empty">Suche in allen Tickets, auf die du Zugriff hast.</div>'}</div>`);
   const input = app.querySelector('input[name=q]');
-  const run = async () => {
+  const run = () => {
     const q = input.value.trim();
     sessionStorage.setItem('zm.q', q);
     const out = document.getElementById('results');
-    if (q.length < 2) { out.innerHTML = '<div class="empty">Mindestens 2 Zeichen eingeben.</div>'; return; }
-    out.innerHTML = '<div class="loading">Suche…</div>';
-    try {
-      await loadLookups();
-      const r = await z('GET', `tickets/search?query=${encodeURIComponent(q)}&limit=50&sort_by=updated_at&order_by=desc`);
-      if (input.value.trim() !== q) return;
-      const ids = r?.tickets || [];
-      out.innerHTML = ids.length ? `<ul class="tlist">${ticketRows(ids, r.assets || {})}</ul>` : '<div class="empty">Nichts gefunden.</div>';
-    } catch (err) {
-      out.innerHTML = `<div class="error-box">${esc(err.message)}</div>`;
-    }
+    if (q.length < 2) { out._token = null; out.innerHTML = '<div class="empty">Mindestens 2 Zeichen eingeben.</div>'; return; }
+    pagedList(out, async (page) => {
+      const r = await api('GET', `search?q=${encodeURIComponent(q)}&page=${page || 1}`);
+      return { tickets: r.tickets, total: r.total, next: r.nextPage };
+    }, 'Nichts gefunden.');
   };
   app.querySelector('#sf').onsubmit = (e) => { e.preventDefault(); input.blur(); run(); };
   input.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(run, 450); };
@@ -470,26 +504,58 @@ function replyTarget(ctx) {
   return { type: 'email', to, label: 'E-Mail', html: true, last };
 }
 
+let meFull = null;
+async function loadMe() {
+  if (!meFull) meFull = await z('GET', 'users/me').catch(() => null);
+  return meFull || {};
+}
+
+// Signatur der Ticket-Gruppe wie in der Zammad-Weboberfläche: { html, info, error }
 async function groupSignature(ctx) {
-  const group = ctx.groups[ctx.ticket.group_id];
-  const sigId = group?.signature_id;
-  if (!sigId) return '';
-  if (!state.signatures.has(sigId)) {
-    const s = await z('GET', `signatures/${sigId}`).catch(() => null);
-    state.signatures.set(sigId, s?.active === false ? '' : (s?.body || ''));
+  let group = ctx.groups[ctx.ticket.group_id];
+  if (!group || !('signature_id' in group)) {
+    group = await z('GET', `groups/${ctx.ticket.group_id}`).catch(() => group);
   }
-  const tpl = state.signatures.get(sigId);
-  if (!tpl) return '';
-  const me = ctx.users[state.user.id] || {};
+  const groupName = group?.name || 'diese Gruppe';
+  const sigId = group?.signature_id;
+  if (!sigId) return { html: '', info: `Für ${groupName} ist in Zammad keine Signatur hinterlegt.` };
+  if (!state.signatures.has(sigId)) {
+    try {
+      const sig = await z('GET', `signatures/${sigId}`);
+      state.signatures.set(sigId, { body: sig?.active === false ? '' : (sig?.body || ''), name: sig?.name || '' });
+    } catch (err) {
+      return { html: '', error: `Signatur konnte nicht geladen werden (${err.message}).` };
+    }
+  }
+  const sig = state.signatures.get(sigId);
+  if (!sig.body) return { html: '', info: `Die Signatur von ${groupName} ist inaktiv oder leer.` };
+  const me = await loadMe();
   const customer = ctx.users[ctx.ticket.customer_id] || {};
   const vars = {
-    user: { ...me, firstname: me.firstname || state.user.name.split(' ')[0] || '', lastname: me.lastname || state.user.name.split(' ').slice(1).join(' ') },
-    ticket: { ...ctx.ticket, customer, group },
+    user: { ...me, fullname: userName(me) },
+    ticket: { ...ctx.ticket, customer: { ...customer, fullname: userName(customer) }, group },
   };
-  return tpl.replace(/#\{([a-z_.]+)\}/gi, (_, key) => {
+  const html = sig.body.replace(/#\{([a-z0-9_.]+)\}/gi, (_, key) => {
     const v = key.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), vars);
     return v == null || typeof v === 'object' ? '' : esc(v);
   });
+  return { html: sanitize(html).html, name: sig.name };
+}
+
+async function showSignaturePreview() {
+  const ctx = ticketCtx;
+  const el = document.getElementById('sigInfo');
+  if (!el || ctx.draft.internal || !replyTarget(ctx).html) return;
+  const r = await groupSignature(ctx);
+  if (ticketCtx !== ctx || !document.getElementById('sigInfo')) return;
+  ctx.signature = r;
+  const box = document.getElementById('sigInfo');
+  if (r.html) {
+    box.innerHTML = `<div class="sig-label">Signatur${r.name ? ` „${esc(r.name)}“` : ''} wird angehängt</div><div class="sig-body">${r.html}</div>`;
+  } else {
+    box.innerHTML = `<div class="sig-label ${r.error ? 'sig-err' : ''}">${esc(r.error || r.info)}</div>`;
+  }
+  box.hidden = false;
 }
 
 async function renderTicket(id) {
@@ -571,6 +637,7 @@ function drawTicket() {
           <label class="icon-btn" aria-label="Datei anhängen" title="Datei anhängen">${ICON.clip}<input type="file" id="fileIn" multiple hidden></label>
           <textarea id="msg" rows="1" placeholder="${ctx.draft.internal ? 'Notiz für das Team…' : 'Antwort an den Kunden…'}">${esc(ctx.draft.text)}</textarea>
         </div>
+        <div class="sig" id="sigInfo" hidden></div>
         <div class="files" id="files">${ctx.draft.files.map((f, i) => `<span data-file="${i}">${esc(f.filename)} ✕</span>`).join('')}</div>
         <div class="send-row" ${ctx.draft.text.trim() || ctx.draft.files.length ? '' : 'hidden'} id="sendRow">
           <button class="btn primary" type="submit" data-after="keep">Senden</button>
@@ -600,6 +667,7 @@ function drawTicket() {
   app.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => ticketAction(b.dataset.act); });
   document.getElementById('moreBtn').onclick = () => ticketAction('more');
   wireComposer();
+  showSignaturePreview();
 }
 
 function wireComposer() {
@@ -663,13 +731,14 @@ async function sendArticle(after) {
       const target = replyTarget(ctx);
       if (!target.to) throw new Error('Keine Empfängeradresse gefunden. Bitte in Zammad antworten.');
       if (target.html) {
-        const sig = await groupSignature(ctx);
+        const sig = ctx.signature || await groupSignature(ctx);
+        if (sig.error) throw new Error(sig.error);
         Object.assign(article, {
           type: 'email',
           to: target.to,
           subject: ctx.ticket.title,
           content_type: 'text/html',
-          body: textToHtml(text) + (sig ? `<div><br></div><div data-signature="true">${sig}</div>` : ''),
+          body: textToHtml(text) + (sig.html ? `<div><br></div><div data-signature="true" data-signature-id="${esc(ctx.groups[ctx.ticket.group_id]?.signature_id || '')}">${sig.html}</div>` : ''),
         });
         if (target.last?.message_id) article.in_reply_to = target.last.message_id;
       } else {
@@ -936,7 +1005,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !state.user) return;
   refreshUnread();
   const h = location.hash || '#/';
-  if (h === '#/' || h === '') loadOverview();
+  if ((h === '#/' || h === '') && window.scrollY < 200) loadOverview();
 });
 
 // Klick auf eine Push-Meldung, während die App offen ist

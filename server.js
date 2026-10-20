@@ -14,6 +14,7 @@ const { db, readPrefs, DEFAULT_PREFS } = await import('./lib/db.js');
 const { encrypt, decrypt, randomToken, sha256 } = await import('./lib/crypto.js');
 const { zammad, zammadRaw, zammadError, tokenAuth, basicAuth } = await import('./lib/zammad.js');
 const { initVapid, vapidPublicKey, sendToUser, startPoller, pollUser } = await import('./lib/push.js');
+const { loadOverviewPage, fromAssets } = await import('./lib/overview.js');
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -323,6 +324,37 @@ async function handleProxy(req, res, ctx, subPath, search) {
   upstream.pipe(res);
 }
 
+// ---------- Übersichten und Suche (seitenweise) ----------
+
+async function handleOverview(req, res, ctx, url) {
+  const link = url.searchParams.get('link') || '';
+  const overviewId = Number(url.searchParams.get('id')) || null;
+  const cursor = url.searchParams.get('cursor') || null;
+  const pageSize = Math.min(100, Math.max(10, Number(url.searchParams.get('size')) || 40));
+  if (!/^[A-Za-z0-9_-]+$/.test(link)) return send(res, 400, { error: 'Ungültige Übersicht' });
+  const page = await loadOverviewPage({
+    auth: tokenAuth(decrypt(ctx.user.token_enc)), userId: ctx.user.id, overviewId, link, cursor, pageSize,
+  });
+  send(res, 200, page);
+}
+
+async function handleSearch(req, res, ctx, url) {
+  const q = (url.searchParams.get('q') || '').trim().slice(0, 200);
+  const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+  const perPage = 40;
+  if (q.length < 2) return send(res, 400, { error: 'Suchbegriff zu kurz' });
+  const r = await zammad({
+    path: `/tickets/search?query=${encodeURIComponent(q)}&page=${page}&per_page=${perPage}&limit=${perPage}&sort_by=updated_at&order_by=desc&full=true`,
+    auth: tokenAuth(decrypt(ctx.user.token_enc)),
+  });
+  if (r.status === 401) return send(res, 401, { error: 'Zammad-Token ungültig. Bitte neu anmelden.', reauth: true });
+  if (r.status !== 200) return send(res, r.status, { error: zammadError(r) });
+  const ids = r.data?.record_ids || r.data?.tickets || [];
+  const total = r.data?.total_count ?? r.data?.tickets_count ?? ids.length;
+  const tickets = ids.map((id) => fromAssets(id, r.data?.assets || {})).filter(Boolean);
+  send(res, 200, { tickets, total, nextPage: ids.length >= perPage && page * perPage < total ? page + 1 : null });
+}
+
 // ---------- Push-API ----------
 
 async function handlePushSubscribe(req, res, ctx) {
@@ -449,6 +481,8 @@ async function route(req, res) {
   if (p === '/api/push/unsubscribe' && req.method === 'POST') return handlePushUnsubscribe(req, res, ctx);
   if (p === '/api/push/test' && req.method === 'POST') return handlePushTest(req, res, ctx);
   if (p === '/api/prefs' && req.method === 'PUT') return handlePrefs(req, res, ctx);
+  if (p === '/api/overview' && req.method === 'GET') return handleOverview(req, res, ctx, url);
+  if (p === '/api/search' && req.method === 'GET') return handleSearch(req, res, ctx, url);
   if (p.startsWith('/api/z/')) return handleProxy(req, res, ctx, p.slice('/api/z/'.length), url.search);
 
   send(res, 404, { error: 'Unbekannter Endpunkt' });
