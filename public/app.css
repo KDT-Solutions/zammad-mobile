@@ -1,0 +1,290 @@
+/* Zammad Mobile – schnelle Ticket-Triage mit einer Hand.
+   Farbe ist Information: der Status steht als breiter Streifen am linken Rand jeder Zeile. */
+
+:root {
+  --bg: #F5F7F8;
+  --surface: #FFFFFF;
+  --ink: #1B2328;
+  --muted: #5F6B72;
+  --line: #DDE3E6;
+  --accent: #0F6E74;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E1F0F0;
+  --note: #FFF6DB;
+  --note-line: #EBCB6B;
+  --danger: #C23B3B;
+
+  --st-new: #2F6FDB;
+  --st-open: #D9822B;
+  --st-pending: #7E57C2;
+  --st-closed: #8A969C;
+  --st-esc: #D64545;
+
+  --radius-s: 6px;
+  --radius-m: 12px;
+  --tap: 44px;
+  --nav-h: 56px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12171A;
+    --surface: #1A2125;
+    --ink: #E6ECEF;
+    --muted: #93A1A8;
+    --line: #2A3338;
+    --accent: #4FB3B9;
+    --accent-ink: #0B1A1B;
+    --accent-soft: #1D3436;
+    --note: #3A3220;
+    --note-line: #8C7333;
+    --danger: #EF7A7A;
+    --st-new: #6F9EF0;
+    --st-open: #EBA25A;
+    --st-pending: #A88BE0;
+    --st-closed: #6F7B81;
+    --st-esc: #F07070;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 16px/1.45 var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ---------- Grundlayout ---------- */
+
+.screen { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(var(--safe-t) + 8px) 12px 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.topbar h1 { font-size: 20px; font-weight: 700; margin: 0; flex: 1; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.icon-btn {
+  min-width: var(--tap); height: var(--tap);
+  display: inline-grid; place-items: center;
+  border: 0; background: none; border-radius: var(--radius-s); cursor: pointer;
+  color: var(--ink);
+}
+.icon-btn:active { background: var(--line); }
+.icon-btn svg { width: 22px; height: 22px; }
+
+main { flex: 1; padding-bottom: calc(var(--nav-h) + var(--safe-b) + 8px); }
+
+.bottomnav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  height: calc(var(--nav-h) + var(--safe-b));
+  padding-bottom: var(--safe-b);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.bottomnav a {
+  display: grid; place-items: center; align-content: center; gap: 2px;
+  text-decoration: none; color: var(--muted); font-size: 11px; position: relative;
+}
+.bottomnav a svg { width: 24px; height: 24px; }
+.bottomnav a[aria-current="page"] { color: var(--accent); }
+.badge {
+  position: absolute; top: 6px; left: calc(50% + 6px);
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--st-esc); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+
+/* ---------- Übersichten (horizontal scrollbar) ---------- */
+
+.views {
+  display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px; scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+}
+.views::-webkit-scrollbar { display: none; }
+.views button {
+  flex: none; height: 34px; padding: 0 12px; border-radius: 17px;
+  border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 14px; white-space: nowrap;
+}
+.views button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.views .count { opacity: .75; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Ticketliste ---------- */
+
+.tlist { list-style: none; margin: 0; padding: 0; }
+.trow { border-bottom: 1px solid var(--line); background: var(--surface); }
+.trow a {
+  display: grid; grid-template-columns: 6px 1fr auto; gap: 0 12px;
+  padding: 12px 12px 12px 0; text-decoration: none; color: inherit; min-height: 72px;
+}
+.trow .stripe { grid-row: 1 / span 3; border-radius: 0 3px 3px 0; background: var(--st-closed); }
+.trow .title { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.trow.unread .title::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--st-new); margin-right: 6px; vertical-align: 2px; }
+.trow .when { color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.trow .meta { grid-column: 2 / span 2; color: var(--muted); font-size: 14px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trow .nr { font-variant-numeric: tabular-nums; }
+
+.st-new { --st: var(--st-new); }
+.st-open { --st: var(--st-open); }
+.st-pending { --st: var(--st-pending); }
+.st-closed { --st: var(--st-closed); }
+.st-esc { --st: var(--st-esc); }
+.trow .stripe { background: var(--st, var(--st-closed)); }
+
+.state-pill {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--st, var(--muted));
+}
+.state-pill::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--st, var(--muted)); }
+
+.empty, .loading, .error-box { padding: 40px 24px; text-align: center; color: var(--muted); }
+.error-box { color: var(--danger); }
+.more { display: block; width: calc(100% - 24px); margin: 12px; height: var(--tap); border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); cursor: pointer; }
+
+/* ---------- Ticketansicht ---------- */
+
+.tview main { padding-bottom: 0; }
+.thead { padding: 12px 16px 10px; background: var(--surface); border-bottom: 1px solid var(--line); border-left: 6px solid var(--st, var(--st-closed)); }
+.thead h2 { margin: 0 0 6px; font-size: 19px; line-height: 1.3; font-weight: 700; }
+.thead dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 14px; }
+.thead dt { color: var(--muted); }
+.thead dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+.actions { display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+.actions::-webkit-scrollbar { display: none; }
+.btn {
+  flex: none; height: 38px; padding: 0 14px; border-radius: var(--radius-s);
+  border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 15px; font-weight: 500;
+}
+.btn:active { filter: brightness(.95); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.danger { color: var(--danger); }
+.btn[disabled] { opacity: .5; cursor: default; }
+
+.thread { padding: 12px 10px 16px; display: flex; flex-direction: column; gap: 12px; }
+.art {
+  max-width: 94%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m);
+  padding: 10px 12px; align-self: flex-start; min-width: 0;
+}
+.art.agent { align-self: flex-end; background: var(--accent-soft); border-color: transparent; }
+.art.internal { align-self: stretch; max-width: 100%; background: var(--note); border: 1px dashed var(--note-line); }
+.art.system { align-self: center; background: transparent; border: 0; color: var(--muted); font-size: 13px; text-align: center; }
+.art header { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.art header b { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.art header .kind { margin-left: auto; white-space: nowrap; }
+.art .body { overflow-wrap: anywhere; font-size: 15px; }
+.art .body.clamped { max-height: 340px; overflow: hidden; position: relative; }
+.art .body.clamped::after { content: ""; position: absolute; inset: auto 0 0; height: 60px; background: linear-gradient(transparent, var(--art-bg, var(--surface))); }
+.art.agent .body.clamped::after { --art-bg: var(--accent-soft); }
+.art.internal .body.clamped::after { --art-bg: var(--note); }
+.art .body img { max-width: 100%; height: auto; }
+.art .body table { max-width: 100%; display: block; overflow-x: auto; }
+.art .body blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
+.art .body pre { white-space: pre-wrap; }
+.art .expand { margin-top: 6px; background: none; border: 0; color: var(--accent); padding: 4px 0; cursor: pointer; font-weight: 600; }
+.art .blocked { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.atts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.atts a { font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--radius-s); text-decoration: none; color: var(--ink); background: var(--surface); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Composer (fest unten) ---------- */
+
+.composer {
+  position: sticky; bottom: 0; z-index: 15;
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding: 8px 10px calc(8px + var(--safe-b));
+}
+.composer.note { background: var(--note); }
+.composer .mode { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+.composer .mode button { white-space: nowrap; flex: none; height: 30px; padding: 0 10px; border-radius: 15px; border: 1px solid var(--line); background: var(--bg); font-size: 13px; cursor: pointer; }
+.composer .mode button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.composer .to { font-size: 12px; color: var(--muted); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 50%; }
+.composer .row { display: flex; gap: 6px; align-items: flex-end; }
+.composer textarea {
+  flex: 1; min-height: 42px; max-height: 40vh; resize: none;
+  padding: 10px 12px; border-radius: var(--radius-m); border: 1px solid var(--line); background: var(--bg); line-height: 1.35;
+}
+.composer .send-row { display: flex; gap: 6px; margin-top: 6px; }
+.composer .send-row .btn { flex: 1; }
+.composer .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 12px; }
+.composer .files span { padding: 3px 8px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+
+/* ---------- Bottom-Sheet ---------- */
+
+.sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: flex; align-items: flex-end; }
+.sheet {
+  width: 100%; background: var(--surface); border-radius: var(--radius-m) var(--radius-m) 0 0;
+  padding: 8px 0 calc(12px + var(--safe-b)); max-height: 80vh; overflow-y: auto;
+  animation: sheet-in .18s ease-out;
+}
+.sheet h3 { margin: 6px 16px 8px; font-size: 16px; }
+.sheet button.opt {
+  display: flex; width: 100%; align-items: center; gap: 10px; text-align: left;
+  min-height: 48px; padding: 0 16px; background: none; border: 0; cursor: pointer; font-size: 16px;
+}
+.sheet button.opt:active { background: var(--bg); }
+.sheet .field { padding: 6px 16px 12px; display: grid; gap: 8px; }
+.sheet input { height: var(--tap); padding: 0 10px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--bg); }
+@keyframes sheet-in { from { transform: translateY(30px); opacity: .6; } }
+
+/* ---------- Formulare: Login, Suche, Einstellungen ---------- */
+
+.login { flex: 1; display: grid; place-items: center; padding: 24px 20px; }
+.login form { width: 100%; max-width: 360px; display: grid; gap: 12px; }
+.login h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.02em; }
+.login p { margin: 0; color: var(--muted); }
+label.f { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+label.f input, label.f textarea {
+  height: 48px; padding: 0 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface); font-size: 16px; color: var(--ink);
+}
+.login .btn { height: 48px; font-size: 16px; }
+.login .hint { font-size: 14px; color: var(--muted); }
+.login .err { color: var(--danger); font-size: 14px; }
+.linkbtn { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 6px 0; text-align: left; }
+
+.searchbar { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.searchbar input { width: 100%; height: var(--tap); padding: 0 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface); }
+
+.settings { padding: 8px 0; }
+.settings section { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.settings h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 16px 16px 6px; }
+.settings .item { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.settings .item:last-child { border-bottom: 0; }
+.settings .item span { flex: 1; }
+.settings .item small { display: block; color: var(--muted); font-size: 13px; }
+.settings .item input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+.settings p.note { padding: 0 16px; color: var(--muted); font-size: 14px; }
+
+.nlist { list-style: none; margin: 0; padding: 0; }
+.nlist li a { display: block; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface); text-decoration: none; color: inherit; }
+.nlist li.unseen a { border-left: 4px solid var(--st-new); padding-left: 12px; }
+.nlist .what { font-size: 13px; color: var(--muted); }
+.nlist .t { font-weight: 600; }
+
+#toast {
+  position: fixed; left: 12px; right: 12px; bottom: calc(var(--nav-h) + var(--safe-b) + 12px); z-index: 50;
+  background: var(--ink); color: var(--bg); padding: 12px 14px; border-radius: var(--radius-s); font-size: 15px;
+}
+#toast.error { background: var(--danger); color: #fff; }
+.tview ~ #toast, body.no-nav #toast { bottom: calc(150px + var(--safe-b)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet { animation: none; }
+}
+
+@media (min-width: 720px) {
+  .screen { max-width: 720px; margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--bg); }
+  .bottomnav { max-width: 720px; margin: 0 auto; }
+}

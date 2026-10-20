@@ -1,0 +1,46 @@
+services:
+  zammad-mobile:
+    image: node:24-alpine
+    restart: unless-stopped
+    user: "1000:1000"
+    working_dir: /home/node
+    # Holt beim Start den Code aus dem GitHub-Repo, installiert die Abhängigkeiten und startet ihn.
+    # Ein Neustart des Containers spielt damit den aktuellen Stand von GITHUB_REF ein.
+    command:
+      - sh
+      - -c
+      - >-
+        rm -rf /tmp/app && mkdir -p /tmp/app &&
+        node -e "fetch('https://api.github.com/repos/'+process.env.GITHUB_REPO+'/tarball/'+process.env.GITHUB_REF,{headers:{'User-Agent':'zammad-mobile'}}).then(async r=>{if(!r.ok)throw new Error('GitHub '+r.status);require('fs').writeFileSync('/tmp/app.tgz',Buffer.from(await r.arrayBuffer()))}).catch(e=>{console.error(e.message);process.exit(1)})" &&
+        tar xzf /tmp/app.tgz -C /tmp/app --strip-components=1 && rm /tmp/app.tgz &&
+        cd /tmp/app && npm ci --omit=dev --no-audit --no-fund --loglevel=error &&
+        exec node server.js
+    environment:
+      PORT: "8080"
+      DATA_DIR: /home/node/data
+      TZ: Europe/Zurich
+      NODE_NO_WARNINGS: "1"
+      BASE_PATH: ${BASE_PATH:-/mobilenew}
+      PUBLIC_URL: ${PUBLIC_URL}
+      ZAMMAD_URL: ${ZAMMAD_URL}
+      ZAMMAD_HOST_HEADER: ${ZAMMAD_HOST_HEADER:-}
+      APP_SECRET: ${APP_SECRET}
+      ALLOWED_LOGINS: ${ALLOWED_LOGINS:-}
+      POLL_SECONDS: ${POLL_SECONDS:-15}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      GITHUB_REPO: ${GITHUB_REPO}
+      GITHUB_REF: ${GITHUB_REF:-main}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${HOST_PORT:-8080}:8080"
+    volumes:
+      # Volume auf /home/node (gehört dem User node): Datenbank, VAPID-Schlüssel, npm-Cache
+      - zammad-mobile-home:/home/node
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  zammad-mobile-home:

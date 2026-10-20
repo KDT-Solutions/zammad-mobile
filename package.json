@@ -1,0 +1,19 @@
+{
+  "name": "zammad-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Schlanke mobile PWA für Zammad-Agents mit nativen Web-Push-Benachrichtigungen",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/app.test.js"
+  },
+  "dependencies": {
+    "dompurify": "3.2.6",
+    "web-push": "3.6.7"
+  }
+}
