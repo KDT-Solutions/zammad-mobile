@@ -1,5 +1,5 @@
 // Service Worker: Push-Meldungen anzeigen, Klick öffnet das Ticket, App-Hülle für schnellen Start cachen.
-const CACHE = 'zm-shell-v1';
+const CACHE = 'zm-shell-v2';
 const SCOPE = self.registration.scope; // endet mit /
 const SHELL = ['', 'index.html', 'app.js', 'app.css', 'vendor/purify.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 
@@ -62,11 +62,18 @@ self.addEventListener('notificationclick', (e) => {
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const client = all.find((c) => c.url.startsWith(SCOPE));
-    if (client) {
-      await client.focus();
-      client.postMessage({ type: 'open', url: target });
+    if (!client) {
+      await self.clients.openWindow(target);
       return;
     }
-    await self.clients.openWindow(target);
+    // Offene App: in den Vordergrund holen und direkt zum Ticket navigieren.
+    // focus() kann auf iOS fehlschlagen, deshalb einzeln abgesichert.
+    try { await client.focus(); } catch { /* weiter */ }
+    let navigated = false;
+    if (client.url !== target && typeof client.navigate === 'function') {
+      try { navigated = !!(await client.navigate(target)); } catch { navigated = false; }
+    }
+    // Gleiches Ticket schon offen (dann nur neu laden) oder navigate() nicht möglich: die App übernimmt
+    if (!navigated) client.postMessage({ type: 'open', url: target });
   })());
 });

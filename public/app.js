@@ -1009,12 +1009,17 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Klick auf eine Push-Meldung, während die App offen ist
+function openFromNotification(url) {
+  const hash = '#' + (String(url).split('#')[1] || '/');
+  document.querySelector('.sheet-backdrop')?.remove();
+  // Gleiches Ticket schon offen: neu laden, damit die neue Nachricht sichtbar ist
+  if (location.hash === hash) render(); else location.hash = hash;
+}
 navigator.serviceWorker?.addEventListener('message', (e) => {
-  if (e.data?.type === 'open' && e.data.url) {
-    const hash = e.data.url.split('#')[1];
-    if (hash) location.hash = '#' + hash;
-  }
+  if (e.data?.type === 'open' && e.data.url) openFromNotification(e.data.url);
 });
+// Safari stellt Nachrichten vom Service Worker sonst erst nach dem Laden zu
+navigator.serviceWorker?.startMessages?.();
 
 async function boot() {
   if ('serviceWorker' in navigator) {
