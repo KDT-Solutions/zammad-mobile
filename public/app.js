@@ -1016,6 +1016,7 @@ document.addEventListener('focusout', () => setTimeout(syncViewport, 50));
 
 let unreadTimer;
 function afterLogin() {
+  setTimeout(takePendingOpen, 0);
   refreshUnread();
   clearInterval(unreadTimer);
   unreadTimer = setInterval(() => { if (document.visibilityState === 'visible' && state.user) refreshUnread(); }, 60000);
@@ -1027,6 +1028,7 @@ function afterLogin() {
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !state.user) return;
+  takePendingOpen();
   refreshUnread();
   const h = location.hash || '#/';
   if ((h === '#/' || h === '') && window.scrollY < 200) loadOverview();
@@ -1040,8 +1042,28 @@ function openFromNotification(url) {
   if (location.hash === hash) render(); else location.hash = hash;
 }
 navigator.serviceWorker?.addEventListener('message', (e) => {
-  if (e.data?.type === 'open' && e.data.url) openFromNotification(e.data.url);
+  if (e.data?.type === 'open' && e.data.url) { clearPendingOpen(); openFromNotification(e.data.url); }
 });
+
+// Vom Service Worker abgelegtes Klick-Ziel abholen (Kaltstart, App kommt aus dem Hintergrund)
+const PENDING_KEY = `${location.origin}${BASE}/__pending-open`;
+function clearPendingOpen() {
+  if (!('caches' in window)) return;
+  caches.open('zm-pending').then((c) => c.delete(PENDING_KEY)).catch(() => {});
+}
+async function takePendingOpen() {
+  if (!state.user || !('caches' in window)) return;
+  try {
+    const c = await caches.open('zm-pending');
+    const r = await c.match(PENDING_KEY);
+    if (!r) return;
+    await c.delete(PENDING_KEY);
+    const { url, ts } = await r.json();
+    if (url && Date.now() - ts < 5 * 60 * 1000) openFromNotification(url);
+  } catch { /* egal */ }
+}
+window.addEventListener('focus', takePendingOpen);
+window.addEventListener('pageshow', takePendingOpen);
 // Safari stellt Nachrichten vom Service Worker sonst erst nach dem Laden zu
 navigator.serviceWorker?.startMessages?.();
 

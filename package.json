@@ -1,6 +1,6 @@
 {
   "name": "zammad-mobile",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "private": true,
   "description": "Schlanke mobile PWA für Zammad-Agents mit nativen Web-Push-Benachrichtigungen",
   "type": "module",

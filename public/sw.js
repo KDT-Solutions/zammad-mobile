@@ -1,5 +1,5 @@
 // Service Worker: Push-Meldungen anzeigen, Klick öffnet das Ticket, App-Hülle für schnellen Start cachen.
-const CACHE = 'zm-shell-v2';
+const CACHE = 'zm-shell-v3';
 const SCOPE = self.registration.scope; // endet mit /
 const SHELL = ['', 'index.html', 'app.js', 'app.css', 'vendor/purify.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 
@@ -10,7 +10,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k);
+    for (const k of await caches.keys()) if (k !== CACHE && k !== PENDING) await caches.delete(k);
     await self.clients.claim();
   })());
 });
@@ -56,24 +56,28 @@ self.addEventListener('push', (e) => {
   })());
 });
 
+// Ziel des Klicks zusätzlich ablegen: iOS stellt postMessage an eine pausierte App nicht zuverlässig zu,
+// öffnet bei openWindow() teils nur die Start-URL und kennt client.navigate() nicht. Die App holt das Ziel
+// beim Start bzw. beim Zurückkommen in den Vordergrund hier ab (siehe takePendingOpen in app.js).
+const PENDING = 'zm-pending';
+const PENDING_KEY = SCOPE + '__pending-open';
+
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const target = e.notification.data?.url || SCOPE;
   e.waitUntil((async () => {
+    try {
+      const c = await caches.open(PENDING);
+      await c.put(PENDING_KEY, new Response(JSON.stringify({ url: target, ts: Date.now() }), { headers: { 'Content-Type': 'application/json' } }));
+    } catch { /* weiter */ }
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const client = all.find((c) => c.url.startsWith(SCOPE));
     if (!client) {
-      await self.clients.openWindow(target);
+      try { await self.clients.openWindow(target); } catch { /* App holt das Ziel selbst ab */ }
       return;
     }
-    // Offene App: in den Vordergrund holen und direkt zum Ticket navigieren.
-    // focus() kann auf iOS fehlschlagen, deshalb einzeln abgesichert.
+    // Offene App: in den Vordergrund holen und das Ticket per Nachricht öffnen lassen.
     try { await client.focus(); } catch { /* weiter */ }
-    let navigated = false;
-    if (client.url !== target && typeof client.navigate === 'function') {
-      try { navigated = !!(await client.navigate(target)); } catch { navigated = false; }
-    }
-    // Gleiches Ticket schon offen (dann nur neu laden) oder navigate() nicht möglich: die App übernimmt
-    if (!navigated) client.postMessage({ type: 'open', url: target });
+    client.postMessage({ type: 'open', url: target });
   })());
 });
