@@ -658,7 +658,10 @@ function drawTicket() {
       b.after(more);
     }
   });
-  requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
+  requestAnimationFrame(() => {
+    const m = app.querySelector('.tview main');
+    if (m) m.scrollTop = m.scrollHeight;
+  });
 
   document.getElementById('reloadT').onclick = () => renderTicket(ctx.id);
   document.getElementById('backBtn').onclick = (e) => {
@@ -978,9 +981,11 @@ async function renderSettings() {
 // ---------- Router ----------
 
 function render() {
-  if (!state.user) return renderLogin();
   const h = location.hash || '#/';
-  const m = h.match(/^#\/t\/(\d+)/);
+  const m = state.user ? h.match(/^#\/t\/(\d+)/) : null;
+  document.body.classList.toggle('in-ticket', !!m);
+  syncViewport();
+  if (!state.user) return renderLogin();
   if (m) return renderTicket(m[1]);
   if (h.startsWith('#/suche')) return renderSearch();
   if (h.startsWith('#/meldungen')) return renderNotifications();
@@ -989,6 +994,25 @@ function render() {
 }
 
 window.addEventListener('hashchange', render);
+
+// Sichtbare Höhe an die Ticketansicht weitergeben. iOS verkleinert bei offener Tastatur nur den
+// visualViewport und verschiebt die Seite; ohne das bleibt der Antwortbereich mitten im Bild hängen.
+function syncViewport() {
+  const vv = window.visualViewport;
+  const root = document.documentElement.style;
+  root.setProperty('--vv-h', `${Math.round(vv ? vv.height : window.innerHeight)}px`);
+  root.setProperty('--vv-top', `${Math.round(vv ? vv.offsetTop : 0)}px`);
+  // Nach dem Schliessen der Tastatur verschobene Seite zurücksetzen
+  if (document.body.classList.contains('in-ticket') && window.scrollY !== 0
+      && document.activeElement?.tagName !== 'TEXTAREA') window.scrollTo(0, 0);
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncViewport);
+  window.visualViewport.addEventListener('scroll', syncViewport);
+}
+window.addEventListener('resize', syncViewport);
+window.addEventListener('orientationchange', syncViewport);
+document.addEventListener('focusout', () => setTimeout(syncViewport, 50));
 
 let unreadTimer;
 function afterLogin() {
