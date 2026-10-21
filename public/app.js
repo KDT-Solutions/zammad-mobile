@@ -551,7 +551,7 @@ async function showSignaturePreview() {
   ctx.signature = r;
   const box = document.getElementById('sigInfo');
   if (r.html) {
-    box.innerHTML = `<div class="sig-label">Signatur${r.name ? ` „${esc(r.name)}“` : ''} wird angehängt</div><div class="sig-body">${r.html}</div>`;
+    box.innerHTML = `<div class="sig-label">Signatur${r.name ? ` „${esc(r.name)}“` : ''} wird angehängt</div>`;
   } else {
     box.innerHTML = `<div class="sig-label ${r.error ? 'sig-err' : ''}">${esc(r.error || r.info)}</div>`;
   }
