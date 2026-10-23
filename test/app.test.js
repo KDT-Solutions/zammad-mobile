@@ -1,3 +1,4 @@
+import vm from 'node:vm';
 // Integrationstest: echte App gegen den Zammad-Mock, Push-Endpunkt als lokaler HTTPS-Server.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -172,6 +173,36 @@ test('Antwort per E-Mail mit Signatur und Schliessen in einem Schritt', async ()
   const created = Object.values(mock.articles).find((a) => a.body === '<div>Erledigt</div>');
   assert.ok(created);
   assert.equal(created.type_id, 1);
+});
+
+test('Artikelnamen kommen aus by_ticket?expand=true (Zammad hat keine ticket_article_types)', async () => {
+  const r = await req('GET', '/api/z/ticket_articles/by_ticket/102?expand=true');
+  assert.equal(r.status, 200);
+  assert.equal(r.data[0].type, 'whatsapp message');
+  assert.equal(r.data[0].sender, 'Customer');
+  assert.equal((await req('GET', '/api/z/ticket_article_types')).status, 404);
+});
+
+test('Antwortkanal: WhatsApp-Ticket antwortet per WhatsApp, nie per E-Mail', () => {
+  const src = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const fn = (name) => {
+    const start = src.indexOf(`function ${name}(`);
+    let i = src.indexOf('{', start), depth = 0;
+    for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}' && --depth === 0) break; }
+    return src.slice(start, i + 1);
+  };
+  const sandbox = { state: { lookups: { types: {}, senders: {} } }, TYPE_DE: { 'whatsapp message': 'WhatsApp' } };
+  vm.createContext(sandbox);
+  vm.runInContext(`${fn('learnArticleNames')}\n${fn('replyTarget')}\nthis.learnArticleNames = learnArticleNames; this.replyTarget = replyTarget;`, sandbox);
+  const arts = [{ id: 1, sender_id: 2, type_id: 15, from: 'Stephan (+41790000000)', internal: false }];
+  const ctx = { articles: arts, ticket: { customer_id: 20 }, users: { 20: { email: 'kunde@example.org' } } };
+  // Ohne Namen: blockieren statt E-Mail an die Kundenadresse
+  assert.equal(sandbox.replyTarget(ctx).unknown, true);
+  sandbox.learnArticleNames([{ id: 1, sender_id: 2, sender: 'Customer', type_id: 15, type: 'whatsapp message' }]);
+  const t = sandbox.replyTarget(ctx);
+  assert.equal(t.type, 'whatsapp message');
+  assert.equal(t.html, false);
+  assert.equal(t.to, 'Stephan (+41790000000)');
 });
 
 test('Push: Abo, erster Lauf setzt nur die Grenze, neue Meldung wird gepusht', async () => {

@@ -112,18 +112,15 @@ const userName = (u) => (u ? [u.firstname, u.lastname].filter(Boolean).join(' ')
 
 async function loadLookups() {
   if (state.lookups) return state.lookups;
-  const [states, types, senders] = await Promise.all([
-    z('GET', 'ticket_states').catch(() => []),
-    z('GET', 'ticket_article_types').catch(() => []),
-    z('GET', 'ticket_article_senders').catch(() => []),
-  ]);
+  // Zammad hat keine REST-Endpunkte für Artikeltypen und -absender. Deren Namen kommen
+  // pro Ticket aus ticket_articles/by_ticket?expand=true (siehe learnArticleNames).
+  const states = await z('GET', 'ticket_states').catch(() => []);
   const byId = (arr) => Object.fromEntries((Array.isArray(arr) ? arr : []).map((x) => [x.id, x]));
   state.lookups = {
     states: byId(states),
     statesList: (Array.isArray(states) ? states : []).filter((s) => s.active !== false),
-    types: byId(types),
-    typeByName: Object.fromEntries((Array.isArray(types) ? types : []).map((t) => [t.name, t])),
-    senders: byId(senders),
+    types: {},
+    senders: {},
   };
   return state.lookups;
 }
@@ -496,6 +493,9 @@ function replyTarget(ctx) {
   const last = customerArts[customerArts.length - 1];
   const lastType = last ? (L.types[last.type_id]?.name || last.type) : null;
   const customer = ctx.users[ctx.ticket.customer_id];
+  // Kanal unbekannt: lieber blockieren als still per E-Mail antworten
+  const unknown = ctx.articles.some((a) => !(L.senders[a.sender_id]?.name || a.sender) || !(L.types[a.type_id]?.name || a.type));
+  if (unknown) return { type: null, to: '', label: 'unbekannt', html: false, last, unknown: true };
   const messaging = ['whatsapp message', 'sms', 'telegram personal-message'];
   if (last && messaging.includes(lastType)) {
     return { type: lastType, to: last.from || '', label: TYPE_DE[lastType] || lastType, html: false, last };
@@ -558,13 +558,27 @@ async function showSignaturePreview() {
   box.hidden = false;
 }
 
+function learnArticleNames(list) {
+  // Typ- und Absendernamen (z.B. "whatsapp message", "Customer") aus der expandierten Artikelliste
+  const L = state.lookups;
+  for (const a of Array.isArray(list) ? list : []) {
+    if (a.type_id && a.type) L.types[a.type_id] = { id: a.type_id, name: a.type };
+    if (a.sender_id && a.sender) L.senders[a.sender_id] = { id: a.sender_id, name: a.sender };
+  }
+}
+
 async function renderTicket(id) {
   document.body.classList.remove('no-nav');
   app.innerHTML = `<div class="screen tview"><header class="topbar"><a class="icon-btn" href="#/" aria-label="Zurück">${ICON.back}</a><h1>Ticket</h1></header><main><div class="loading">Lade Ticket…</div></main></div>`;
   let r;
   try {
     await loadLookups();
-    r = await z('GET', `tickets/${encodeURIComponent(id)}?all=true`);
+    let expanded;
+    [r, expanded] = await Promise.all([
+      z('GET', `tickets/${encodeURIComponent(id)}?all=true`),
+      z('GET', `ticket_articles/by_ticket/${encodeURIComponent(id)}?expand=true`),
+    ]);
+    learnArticleNames(expanded);
   } catch (err) {
     app.querySelector('main').innerHTML = `<div class="error-box">${esc(err.message)}</div>`;
     return;
@@ -732,6 +746,7 @@ async function sendArticle(after) {
       Object.assign(article, { type: 'note', content_type: 'text/html', body: textToHtml(text) });
     } else {
       const target = replyTarget(ctx);
+      if (target.unknown) throw new Error('Antwortkanal konnte nicht ermittelt werden. Bitte Ticket neu laden.');
       if (!target.to) throw new Error('Keine Empfängeradresse gefunden. Bitte in Zammad antworten.');
       if (target.html) {
         const sig = ctx.signature || await groupSignature(ctx);

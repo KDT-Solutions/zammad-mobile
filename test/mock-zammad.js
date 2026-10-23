@@ -143,10 +143,18 @@ export function startMock(port = 0) {
       return json(200, t);
     }
     const bt = p.match(/^\/ticket_articles\/by_ticket\/(\d+)$/);
-    if (bt) return json(200, Object.values(articles).filter((a) => a.ticket_id === Number(bt[1])).map((a) => ({ ...a, sender: senders.find((s) => s.id === a.sender_id).name, created_by: a.created_by_id === 20 ? customer.email : me.email })));
+    // Wie echtes Zammad: Typ- und Absendernamen nur mit expand=true
+    if (bt) {
+      const expand = url.searchParams.get('expand') === 'true';
+      return json(200, Object.values(articles).filter((a) => a.ticket_id === Number(bt[1])).map((a) => (expand ? {
+        ...a,
+        sender: senders.find((s) => s.id === a.sender_id).name,
+        type: types.find((t) => t.id === a.type_id)?.name,
+        created_by: a.created_by_id === 20 ? customer.email : me.email,
+      } : a)));
+    }
     if (p === '/ticket_states') return json(200, states);
-    if (p === '/ticket_article_types') return json(200, types);
-    if (p === '/ticket_article_senders') return json(200, senders);
+    // /ticket_article_types und /ticket_article_senders gibt es in Zammad nicht
     if (p === '/signatures/1') return json(200, { id: 1, active: true, body: '<div>Freundliche Grüsse<br>#{user.firstname} #{user.lastname}<br>#{ticket.group.name}</div>' });
     if (p === '/online_notifications') {
       if (url.searchParams.get('full')) return json(200, { record_ids: notifications.map((n) => n.id), assets: ticketAssets([101, 102]) });
