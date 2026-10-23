@@ -120,6 +120,40 @@ test('Login mit Passwort erstellt App-Token, Zugriff über Proxy', async () => {
   assert.equal(att.headers.get('content-type'), 'image/png');
 });
 
+test('Proxy härtet alle Dateiantworten, nicht nur ticket_attachment/', async () => {
+  const get = (p) => fetch(BASE + p, { headers: { Cookie: cookie } });
+  const sandbox = /sandbox/;
+  // HTML-Anhang: nur als Download, nie als HTML im App-Kontext
+  const html = await get('/api/z/ticket_attachment/101/1001/6');
+  assert.equal(html.headers.get('content-type'), 'application/octet-stream');
+  assert.equal(html.headers.get('content-disposition'), 'attachment');
+  assert.match(html.headers.get('content-security-policy'), sandbox);
+  // JS unter attachments/:id darf nie als same-origin Skript ladbar sein (Subresource ignoriert Content-Disposition)
+  const js = await get('/api/z/attachments/7');
+  assert.equal(js.status, 200);
+  assert.equal(js.headers.get('content-type'), 'application/octet-stream');
+  assert.equal(js.headers.get('content-disposition'), 'attachment');
+  assert.match(js.headers.get('content-security-policy'), sandbox);
+  assert.equal(js.headers.get('x-content-type-options'), 'nosniff');
+  // Fehlender Content-Type: ebenfalls nur als Download
+  const none = await get('/api/z/attachments/8');
+  assert.equal(none.headers.get('content-type'), 'application/octet-stream');
+  assert.equal(none.headers.get('content-disposition'), 'attachment');
+  // Bilder und Rohtext bleiben anzeigbar, aber in der Sandbox
+  const avatar = await get('/api/z/users/image/abc');
+  assert.equal(avatar.headers.get('content-type'), 'image/png');
+  assert.equal(avatar.headers.get('content-disposition'), null);
+  assert.match(avatar.headers.get('content-security-policy'), sandbox);
+  const plain = await get('/api/z/ticket_article_plain/1001');
+  assert.match(plain.headers.get('content-type'), /^text\/plain/);
+  assert.match(plain.headers.get('content-security-policy'), sandbox);
+  assert.equal(await plain.text(), 'Hallo, der Drucker geht nicht.');
+  // JSON-Antworten bleiben unverändert (keine Sandbox-CSP, App-CSP gilt)
+  const json = await get('/api/z/tickets/101');
+  assert.match(json.headers.get('content-type'), /json/);
+  assert.doesNotMatch(json.headers.get('content-security-policy'), sandbox);
+});
+
 test('Übersicht seitenweise per GraphQL', async () => {
   const p1 = await req('GET', '/api/overview?link=many&id=3&size=40');
   assert.equal(p1.status, 200, JSON.stringify(p1.data));
@@ -181,6 +215,42 @@ test('Artikelnamen kommen aus by_ticket?expand=true (Zammad hat keine ticket_art
   assert.equal(r.data[0].type, 'whatsapp message');
   assert.equal(r.data[0].sender, 'Customer');
   assert.equal((await req('GET', '/api/z/ticket_article_types')).status, 404);
+});
+
+test('DOMPurify: gebündelte Version ohne bekannte Lücke, genutzte Optionen vorhanden', async () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const installed = JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules/dompurify/package.json'), 'utf8')).version;
+  assert.equal(installed, pkg.dependencies.dompurify);
+  const [maj, min, pat] = installed.split('.').map(Number);
+  assert.ok(maj > 3 || (maj === 3 && (min > 4 || (min === 4 && pat >= 17))), `DOMPurify ${installed} ist älter als 3.4.17`);
+  const served = await req('GET', '/vendor/purify.js');
+  assert.equal(served.status, 200);
+  assert.match(served.data, new RegExp(`DOMPurify ${installed.replace(/\./g, '\\.')}`));
+  // Die in app.js verwendeten Optionen und Hooks gibt es in der Typdefinition weiterhin
+  const types = fs.readFileSync(path.join(ROOT, 'node_modules/dompurify/dist/purify.es.d.mts'), 'utf8');
+  for (const opt of ['FORBID_TAGS', 'FORBID_ATTR', 'ALLOW_DATA_ATTR', 'addHook', 'removeAllHooks', "'afterSanitizeAttributes'"]) {
+    assert.ok(types.includes(opt), `${opt} fehlt in DOMPurify ${installed}`);
+  }
+});
+
+test('Token-Verschlüsselung: 16-Byte-Tag Pflicht, verkürzte oder manipulierte Blobs werden abgelehnt', async () => {
+  process.env.APP_SECRET = process.env.APP_SECRET || crypto.randomBytes(32).toString('hex');
+  const { encrypt, decrypt } = await import('../lib/crypto.js');
+  const blob = encrypt('geheimer-token');
+  assert.equal(decrypt(blob), 'geheimer-token');
+  const buf = Buffer.from(blob, 'base64');
+  assert.equal(buf.length, 12 + 16 + Buffer.byteLength('geheimer-token'));
+  // Zu kurz für IV + Tag
+  assert.throws(() => decrypt(buf.subarray(0, 20).toString('base64')), /zu kurz/);
+  assert.throws(() => decrypt(''), /zu kurz/);
+  // Tag manipuliert
+  const bad = Buffer.from(buf);
+  bad[15] ^= 0xff;
+  assert.throws(() => decrypt(bad.toString('base64')));
+  // Ciphertext manipuliert
+  const bad2 = Buffer.from(buf);
+  bad2[bad2.length - 1] ^= 0x01;
+  assert.throws(() => decrypt(bad2.toString('base64')));
 });
 
 test('Antwortkanal: WhatsApp-Ticket antwortet per WhatsApp, nie per E-Mail', () => {

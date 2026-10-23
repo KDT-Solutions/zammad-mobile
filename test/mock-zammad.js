@@ -164,11 +164,38 @@ export function startMock(port = 0) {
     if (on && req.method === 'PUT') { const n = notifications.find((x) => x.id === Number(on[1])); if (n) n.seen = true; return json(200, n || {}); }
     if (p === '/online_notifications/mark_all_as_read') { notifications.forEach((n) => { n.seen = true; }); return json(200, {}); }
     const att = p.match(/^\/ticket_attachment\/(\d+)\/(\d+)\/(\d+)$/);
+    if (att && att[3] === '6') {
+      // Anhang mit aktivem Inhalt (HTML), wie Zammad ihn mit Original-MIME-Typ ausliefert
+      const html = '<script>alert(1)</script>';
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': html.length });
+      return res.end(html);
+    }
     if (att) {
       // 1x1 PNG
       const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
       res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': png.length });
       return res.end(png);
+    }
+    // Weitere Datei-Endpunkte von Zammad, die den Original-MIME-Typ durchreichen
+    if (p === '/attachments/7') {
+      const js = 'alert(1)';
+      res.writeHead(200, { 'Content-Type': 'text/javascript', 'Content-Length': js.length, 'Content-Disposition': 'inline; filename="x.js"' });
+      return res.end(js);
+    }
+    if (p === '/users/image/abc') {
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': png.length });
+      return res.end(png);
+    }
+    if (p === '/ticket_article_plain/1001') {
+      const txt = 'Hallo, der Drucker geht nicht.';
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': Buffer.byteLength(txt) });
+      return res.end(txt);
+    }
+    if (p === '/attachments/8') {
+      // Ohne Content-Type
+      res.writeHead(200, { 'Content-Length': 3 });
+      return res.end('abc');
     }
     json(404, { error: `mock: ${req.method} ${p} unbekannt` });
   });

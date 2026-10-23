@@ -310,18 +310,28 @@ async function handleProxy(req, res, ctx, subPath, search) {
   for (const h of ['content-type', 'content-length', 'content-disposition', 'etag', 'last-modified']) {
     if (upstream.headers[h]) out[h] = upstream.headers[h];
   }
-  // Anhänge nie als HTML im App-Kontext ausliefern
-  if (/^ticket_attachment\//.test(subPath)) {
-    const ct = String(out['content-type'] || '');
-    if (/html|xml|svg|javascript/i.test(ct)) {
-      out['content-type'] = 'application/octet-stream';
-      out['content-disposition'] = 'attachment';
-    }
-    out['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
-    out['Cache-Control'] = 'private, max-age=3600';
-  }
+  // Alles, was kein JSON ist (Anhänge, Avatare, Rohtext, Fehlerseiten), ist eine Datei aus Zammad:
+  // nie als HTML/Skript im App-Kontext ausliefern, egal unter welchem Pfad Zammad sie liefert
+  if (!isJsonContentType(out['content-type'])) hardenFileResponse(out);
+  if (/^ticket_attachment\//.test(subPath)) out['Cache-Control'] = 'private, max-age=3600';
   res.writeHead(upstream.statusCode, out);
   upstream.pipe(res);
+}
+
+function isJsonContentType(ct) {
+  return /^\s*application\/([a-z0-9.+-]+\+)?json\b/i.test(String(ct || ''));
+}
+
+// Dateiantworten härten: aktive Inhalte (HTML, XML, SVG, JS) und unbekannte Typen nur als Download,
+// alles andere (Bilder, PDF, Text) bleibt anzeigbar, aber in einer Sandbox ohne Skripte
+function hardenFileResponse(out) {
+  const ct = String(out['content-type'] || '');
+  if (!ct || /html|xml|svg|javascript|ecmascript/i.test(ct)) {
+    out['content-type'] = 'application/octet-stream';
+    out['content-disposition'] = 'attachment';
+  }
+  out['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
+  return out;
 }
 
 // ---------- Übersichten und Suche (seitenweise) ----------

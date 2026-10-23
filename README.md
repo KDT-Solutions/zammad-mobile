@@ -24,7 +24,9 @@ Auf dem iPhone kommen Pushes nur, wenn die App über Safari > Teilen > „Zum Ho
 
 ## Betrieb
 
-Docker Compose (z.B. als Portainer-Stack), siehe `docker-compose.yml`. Der Container lädt beim Start den Code aus dem Repository.
+Docker Compose (z.B. als Portainer-Stack), siehe `docker-compose.yml`. Der Container lädt beim Start den Code aus dem Repository (Tarball von `GITHUB_REF`), installiert die Abhängigkeiten mit `npm ci` und startet. Das Basis-Image ist auf einen festen Digest gepinnt.
+
+**Achtung:** `GITHUB_REF=main` (Standard) bedeutet Auto-Deploy: jeder Neustart des Containers führt ungeprüft den aktuellen Stand von `main` aus, inklusive Zugriff auf `APP_SECRET` und alle gespeicherten Agent-Tokens. Für den produktiven Betrieb `GITHUB_REF` auf einen Release-Tag oder Commit-SHA setzen, siehe [Release-Tag setzen](#release-tag-setzen).
 
 | Variable | Pflicht | Beschreibung |
 |---|---|---|
@@ -36,10 +38,24 @@ Docker Compose (z.B. als Portainer-Stack), siehe `docker-compose.yml`. Der Conta
 | `ALLOWED_LOGINS` | nein | Kommagetrennte Logins/E-Mails, die sich anmelden dürfen (leer = alle Agents) |
 | `POLL_SECONDS` | nein | Abfrage-Intervall für Benachrichtigungen, Standard 15 |
 | `VAPID_SUBJECT` | nein | `mailto:` oder `https:`-Kontakt für die Push-Dienste, Standard ist der Ursprung von `PUBLIC_URL` |
-| `GITHUB_REPO`, `GITHUB_REF` | ja / nein | Quelle des Codes, z.B. `owner/zammad-mobile`, Standard-Branch `main` |
+| `GITHUB_REPO`, `GITHUB_REF` | ja / nein | Quelle des Codes, z.B. `owner/zammad-mobile`; `GITHUB_REF` ist Branch, Tag oder Commit-SHA, Standard `main` (= Auto-Deploy bei jedem Neustart, produktiv einen Tag oder SHA pinnen) |
 | `BIND_ADDR`, `HOST_PORT` | nein | Host-Adresse und -Port der Veröffentlichung |
 
 VAPID-Schlüssel und Datenbank liegen im Volume und werden beim ersten Start erzeugt.
+
+### Release-Tag setzen
+
+Ein Release ist ein annotierter Git-Tag auf dem gewünschten Commit, Name `v<Version aus package.json>`:
+
+```sh
+git checkout main && git pull
+git tag -a v1.1.6 -m "Release 1.1.6"
+git push origin v1.1.6
+```
+
+Danach im Stack `GITHUB_REF=v1.1.6` (oder den vollständigen Commit-SHA) setzen und den Container neu starten. Bei einem gepinnten Tag ändert ein Neustart nichts mehr am Code; ein Update ist dann immer ein bewusster Schritt (neuer Tag, `GITHUB_REF` anpassen, Neustart). Zum Rollback einfach `GITHUB_REF` auf den vorherigen Tag zurücksetzen.
+
+Das Basis-Image in `docker-compose.yml` ist per Digest gepinnt (`node:<version>-alpine@sha256:…`). Zum Aktualisieren den Digest des neuen Tags von Docker Hub übernehmen und im Stack eintragen.
 
 ### Reverse-Proxy (Nginx Proxy Manager)
 

@@ -1,11 +1,15 @@
 services:
   zammad-mobile:
-    image: node:24-alpine
+    # Basis-Image fest auf einen Digest gepinnt (node 24.22.1-alpine). Zum Aktualisieren den Digest des
+    # gewünschten Tags von hub.docker.com/_/node übernehmen.
+    image: node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
     restart: unless-stopped
     user: "1000:1000"
     working_dir: /home/node
     # Holt beim Start den Code aus dem GitHub-Repo, installiert die Abhängigkeiten und startet ihn.
     # Ein Neustart des Containers spielt damit den aktuellen Stand von GITHUB_REF ein.
+    # Achtung: GITHUB_REF=main heisst Auto-Deploy bei jedem Neustart, ungeprüft. Für den produktiven
+    # Betrieb GITHUB_REF auf einen Release-Tag (z.B. v1.1.6) oder Commit-SHA setzen, siehe README.
     command:
       - sh
       - -c
