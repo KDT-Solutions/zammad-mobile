@@ -1017,9 +1017,13 @@ function syncViewport() {
   const root = document.documentElement.style;
   root.setProperty('--vv-h', `${Math.round(vv ? vv.height : window.innerHeight)}px`);
   root.setProperty('--vv-top', `${Math.round(vv ? vv.offsetTop : 0)}px`);
+  // Tastatur gilt nur als offen, solange ein Eingabefeld den Fokus hat und der sichtbare Bereich
+  // deutlich kleiner ist als das Fenster. Sonst füllt die Ticketansicht immer den ganzen Bildschirm.
+  const editing = /^(TEXTAREA|INPUT)$/.test(document.activeElement?.tagName || '');
+  const shrunk = vv ? window.innerHeight - vv.height > 80 : false;
+  document.body.classList.toggle('kb-open', editing && shrunk);
   // Nach dem Schliessen der Tastatur verschobene Seite zurücksetzen
-  if (document.body.classList.contains('in-ticket') && window.scrollY !== 0
-      && document.activeElement?.tagName !== 'TEXTAREA') window.scrollTo(0, 0);
+  if (document.body.classList.contains('in-ticket') && window.scrollY !== 0 && !editing) window.scrollTo(0, 0);
 }
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncViewport);
@@ -1027,7 +1031,12 @@ if (window.visualViewport) {
 }
 window.addEventListener('resize', syncViewport);
 window.addEventListener('orientationchange', syncViewport);
-document.addEventListener('focusout', () => setTimeout(syncViewport, 50));
+// iOS meldet die Tastatur-Animation nicht zuverlässig: mehrfach nachziehen, auch nach App-Wechsel.
+const syncLater = () => [50, 300, 700].forEach((ms) => setTimeout(syncViewport, ms));
+document.addEventListener('focusin', syncLater);
+document.addEventListener('focusout', syncLater);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncLater(); });
+window.addEventListener('pageshow', syncLater);
 
 let unreadTimer;
 function afterLogin() {

@@ -1,5 +1,5 @@
 // Service Worker: Push-Meldungen anzeigen, Klick öffnet das Ticket, App-Hülle für schnellen Start cachen.
-const CACHE = 'zm-shell-v3';
+const CACHE = 'zm-shell-v4';
 const SCOPE = self.registration.scope; // endet mit /
 const SHELL = ['', 'index.html', 'app.js', 'app.css', 'vendor/purify.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 

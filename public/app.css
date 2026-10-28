@@ -161,9 +161,12 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + var(--safe-b) + 8px); }
 /* Ticketansicht als feste Hülle: folgt der sichtbaren Höhe (Tastatur!), nur der Verlauf scrollt,
    der Antwortbereich bleibt immer unten. --vv-h/--vv-top setzt app.js aus window.visualViewport. */
 .screen.tview {
-  position: fixed; left: 0; right: 0; top: var(--vv-top, 0px);
-  height: var(--vv-h, 100dvh); min-height: 0; overflow: hidden;
+  position: fixed; inset: 0; height: auto; min-height: 0; overflow: hidden;
 }
+/* Nur bei offener Tastatur an den visualViewport koppeln. iOS liefert nach dem Schliessen der
+   Tastatur (oder nach einem App-Wechsel) teils keinen weiteren resize mehr, eine fest gesetzte
+   Höhe bliebe dann zu klein und der Antwortbereich hinge mitten im Bild. */
+body.kb-open .screen.tview { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100dvh); }
 .screen.tview main {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
 }
@@ -201,6 +204,17 @@ body.in-ticket { overflow: hidden; }
 .art .body.clamped::after { content: ""; position: absolute; inset: auto 0 0; height: 60px; background: linear-gradient(transparent, var(--art-bg, var(--surface))); }
 .art.agent .body.clamped::after { --art-bg: var(--accent-soft); }
 .art.internal .body.clamped::after { --art-bg: var(--note); }
+/* Dark Mode: Mails bringen eigene Schrift- und Hintergrundfarben mit (meist schwarz auf weiss).
+   Auf der dunklen Fläche wäre der Text sonst kaum lesbar, deshalb Farben hier vereinheitlichen. */
+@media (prefers-color-scheme: dark) {
+  .art .body, .art .body * {
+    color: var(--ink) !important;
+    background-color: transparent !important;
+    border-color: var(--line) !important;
+  }
+  .art .body a, .art .body a * { color: var(--accent) !important; }
+  .art .body blockquote, .art .body blockquote * { color: var(--muted) !important; }
+}
 .art .body img { max-width: 100%; height: auto; }
 .art .body table { max-width: 100%; display: block; overflow-x: auto; }
 .art .body blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
