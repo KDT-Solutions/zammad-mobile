@@ -290,6 +290,11 @@ test('Push: Abo, erster Lauf setzt nur die Grenze, neue Meldung wird gepusht', a
   await wait(800);
   assert.equal(pushHits.length, 0, 'Änderung des ignorierten Benutzers darf nicht gepusht werden');
 
+  mock.addNotification(101, 'update'); // Aktualisierung ohne neue Kundennachricht (z.B. Statuswechsel)
+  await wait(800);
+  assert.equal(pushHits.length, 0, 'Aktualisierung ohne Kundennachricht darf nicht gepusht werden');
+
+  mock.articles[1099] = { id: 1099, ticket_id: 101, sender_id: 2, type_id: 1, internal: false, content_type: 'text/plain', body: 'Danke, geht wieder.', attachments: [], created_by_id: 20, created_at: new Date().toISOString() };
   mock.addNotification(101, 'update');
   for (let i = 0; i < 80 && !pushHits.length; i++) await wait(100);
   assert.equal(pushHits.length, 1);

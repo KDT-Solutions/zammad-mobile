@@ -18,7 +18,7 @@ Browser/PWA  ──HTTPS──>  Reverse-Proxy  ──/mobilenew/──>  zammad
 - **Login** mit den eigenen Zammad-Zugangsdaten. Der Server prüft sie gegen Zammad, lässt sich einen persönlichen API-Token ausstellen (`ticket.agent`) und speichert nur diesen, AES-256-GCM-verschlüsselt. Das Passwort wird nicht gespeichert. Beim Abmelden auf dem letzten Gerät wird der Token in Zammad widerrufen.
 - Bei aktiver Zwei-Faktor-Anmeldung oder gesperrtem Passwort-Zugriff auf die API: in Zammad unter *Profil > Token-Zugriff* einen Token mit `ticket.agent` erstellen und sich damit anmelden.
 - Alle Zammad-Aufrufe laufen über den Server (`/api/z/...`); der Browser sieht den Token nie. Sitzungen per HttpOnly/Secure-Cookie, CSRF-Schutz über einen eigenen Header, Login-Rate-Limit, strikte CSP. E-Mail-HTML wird mit DOMPurify bereinigt, externe Bilder (Tracking) werden blockiert.
-- **Push**: Der Server fragt für jeden Benutzer mit aktivem Push-Abo alle `POLL_SECONDS` die Zammad-Online-Benachrichtigungen ab und schickt neue als Web Push. Mehrere Meldungen zum selben Ticket werden zusammengefasst.
+- **Push**: Der Server fragt für jeden Benutzer mit aktivem Push-Abo alle `POLL_SECONDS` die Zammad-Online-Benachrichtigungen ab und schickt neue als Web Push. Gepusht werden neue Tickets, öffentliche Kundennachrichten, Erinnerungen und Eskalationen; Aktualisierungen ohne neue Kundennachricht (interne Notizen, Status-, Gruppen- oder Owner-Wechsel) lösen keinen Push aus, ebenso Änderungen der Benutzer in `PUSH_IGNORE_USER_IDS`. Mehrere Meldungen zum selben Ticket werden zusammengefasst.
 
 Auf dem iPhone kommen Pushes nur, wenn die App über Safari > Teilen > „Zum Home-Bildschirm“ installiert und von dort geöffnet wurde (iOS 16.4 oder neuer).
 
