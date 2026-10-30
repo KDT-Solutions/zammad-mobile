@@ -53,6 +53,7 @@ before(async () => {
       APP_SECRET: crypto.randomBytes(32).toString('hex'),
       DATA_DIR: path.join(tmp, 'data'),
       POLL_SECONDS: '5',
+      PUSH_IGNORE_USER_IDS: '4242',
       NODE_TLS_REJECT_UNAUTHORIZED: '0',
       NODE_NO_WARNINGS: '1',
     },
@@ -284,6 +285,10 @@ test('Push: Abo, erster Lauf setzt nur die Grenze, neue Meldung wird gepusht', a
   assert.equal(sub.status, 200);
   await wait(800);
   assert.equal(pushHits.length, 0, 'alte Meldung darf nicht gepusht werden');
+
+  mock.addNotification(101, 'update', 4242); // Änderung eines ignorierten Automations-Benutzers
+  await wait(800);
+  assert.equal(pushHits.length, 0, 'Änderung des ignorierten Benutzers darf nicht gepusht werden');
 
   mock.addNotification(101, 'update');
   for (let i = 0; i < 80 && !pushHits.length; i++) await wait(100);

@@ -203,9 +203,9 @@ export function startMock(port = 0) {
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => {
     resolve({
       server, port: server.address().port, TOKEN, state, tokens, tickets, articles, notifications, calls,
-      addNotification(o_id, type = 'update') {
+      addNotification(o_id, type = 'update', created_by_id = 20) {
         const id = (notifications.at(-1)?.id || 500) + 1;
-        notifications.push({ id, o_id, object: 'Ticket', type, seen: false, created_by_id: 20, created_at: new Date().toISOString() });
+        notifications.push({ id, o_id, object: 'Ticket', type, seen: false, created_by_id, created_at: new Date().toISOString() });
         return id;
       },
     });

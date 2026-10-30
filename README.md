@@ -37,6 +37,7 @@ Docker Compose (z.B. als Portainer-Stack), siehe `docker-compose.yml`. Der Conta
 | `BASE_PATH` | nein | Pfad der App, Standard `/mobilenew` |
 | `ALLOWED_LOGINS` | nein | Kommagetrennte Logins/E-Mails, die sich anmelden dürfen (leer = alle Agents) |
 | `POLL_SECONDS` | nein | Abfrage-Intervall für Benachrichtigungen, Standard 15 |
+| `PUSH_IGNORE_USER_IDS` | nein | Kommagetrennte Zammad-User-IDs, deren Änderungen keinen Push auslösen (z.B. Automations- oder MCP-Benutzer) |
 | `VAPID_SUBJECT` | nein | `mailto:` oder `https:`-Kontakt für die Push-Dienste, Standard ist der Ursprung von `PUBLIC_URL` |
 | `GITHUB_REPO`, `GITHUB_REF` | ja / nein | Quelle des Codes, z.B. `owner/zammad-mobile`; `GITHUB_REF` ist Branch, Tag oder Commit-SHA, Standard `main` (= Auto-Deploy bei jedem Neustart, produktiv einen Tag oder SHA pinnen) |
 | `BIND_ADDR`, `HOST_PORT` | nein | Host-Adresse und -Port der Veröffentlichung |
